@@ -17,22 +17,8 @@ from docx import Document
 from langchain_community.document_loaders import WebBaseLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
-import constants as ct
-from pathlib import Path
-import pandas as pd
-from langchain_core.documents import Document
-
-
-try:
-    import pydantic
-    if not hasattr(pydantic, "BaseSettings"):
-        from pydantic_settings import BaseSettings
-
-        pydantic.BaseSettings = BaseSettings
-except Exception:
-    pass
-
 from langchain_community.vectorstores import Chroma
+import constants as ct
 
 
 ############################################################
@@ -137,62 +123,19 @@ def initialize_retriever():
     
     # チャンク分割用のオブジェクトを作成
     text_splitter = CharacterTextSplitter(
-        chunk_size=ct.CHUNK_SIZE,
-        chunk_overlap=ct.CHUNK_OVERLAP,
+        chunk_size=500,
+        chunk_overlap=50,
         separator="\n"
     )
 
-    # ==========================================
-    # ★社員名簿CSVだけ「1ドキュメント化」して、splitしない
-    # ==========================================
-    roster_docs = []
-    other_docs = []
-
-    for d in docs_all:
-        # metadata["source"] は loader により無い場合もあるので安全に
-        src = (d.metadata.get("source") or "").replace("\\", "/")
-        name = Path(src).name
-
-        # ファイル名が違う可能性があるので「社員名簿」が入ってたら対象にする
-        if name.endswith(".csv") and "社員名簿" in name:
-            roster_docs.append(d)
-        else:
-            other_docs.append(d)
-
-    # 社員名簿が見つかったら、いったん docs_all から除外して「1つのdoc」に作り直す
-    if roster_docs:
-        # どのcsvか1つに決める（通常は1ファイルのはず）
-        roster_src = (roster_docs[0].metadata.get("source") or "").replace("\\", "/")
-        merged_roster = load_employee_roster_as_one_doc(roster_src)
-    else:
-        merged_roster = []
-
-    # 通常ドキュメントだけチャンク分割
-    splitted_other = text_splitter.split_documents(other_docs)
-
-    # ★社員名簿は分割せず混ぜる
-    splitted_docs = splitted_other + merged_roster
+    # チャンク分割を実施
+    splitted_docs = text_splitter.split_documents(docs_all)
 
     # ベクターストアの作成
-    PERSIST_DIR = "./.chroma"
+    db = Chroma.from_documents(splitted_docs, embedding=embeddings)
 
-    # ベクターストアの作成（永続化）
-    db = Chroma.from_documents(
-        splitted_docs,
-        embedding=embeddings,
-        persist_directory=PERSIST_DIR
-    )
-    db.persist()
-
-    # Retriever
-    retriever = db.as_retriever(search_kwargs={"k": ct.RETRIEVER_TOP_K})
-
-    # 互換性のため従来のキーも保持
-    st.session_state.retriever = retriever
-
-    # モード別で参照するRetriever（utils.pyと整合）
-    st.session_state.retriever_internal = retriever
-    st.session_state.retriever_employees = retriever
+    # ベクターストアを検索するRetrieverの作成
+    st.session_state.retriever = db.as_retriever(search_kwargs={"k": 3})
 
 
 def initialize_session_state():
@@ -213,8 +156,6 @@ def load_data_sources():
     Returns:
         読み込んだ通常データソース
     """
-    logger = logging.getLogger(ct.LOGGER_NAME)
-
     # データソースを格納する用のリスト
     docs_all = []
     # ファイル読み込みの実行（渡した各リストにデータが格納される）
@@ -224,18 +165,11 @@ def load_data_sources():
     # ファイルとは別に、指定のWebページ内のデータも読み込み
     # 読み込み対象のWebページ一覧に対して処理
     for web_url in ct.WEB_URL_LOAD_TARGETS:
-        try:
-            # 指定のWebページを読み込み
-            loader = WebBaseLoader(web_url)
-            web_docs = loader.load()
-            # for文の外のリストに読み込んだデータソースを追加
-            web_docs_all.extend(web_docs)
-        except ModuleNotFoundError as e:
-            logger.warning(f"Webページ読み込みをスキップしました（{web_url}）\n{e}")
-            continue
-        except Exception as e:
-            logger.warning(f"Webページ読み込みに失敗しました（{web_url}）\n{e}")
-            continue
+        # 指定のWebページを読み込み
+        loader = WebBaseLoader(web_url)
+        web_docs = loader.load()
+        # for文の外のリストに読み込んだデータソースを追加
+        web_docs_all.extend(web_docs)
     # 通常読み込みのデータソースにWebページのデータを追加
     docs_all.extend(web_docs_all)
 
@@ -308,31 +242,3 @@ def adjust_string(s):
     
     # OSがWindows以外の場合はそのまま返す
     return s
-
-
-def load_employee_roster_as_one_doc(csv_path: str):
-    """
-    社員名簿CSVを1つのDocumentに変換
-    """
-    df = pd.read_csv(csv_path, encoding="utf-8").fillna("")
-
-    # 部署っぽい列を探す（教材と列名が違っても耐える）
-    dept_col = None
-    for c in df.columns:
-        if "部署" in c or "部門" in c:
-            dept_col = c
-            break
-
-    index_lines = ["【データ】社員名簿（CSV）"]
-    if dept_col:
-        depts = sorted(set([str(d) for d in df[dept_col].tolist() if str(d)]))
-        index_lines.append("【部署一覧】" + " / ".join(depts))
-
-    # そのまま表にしてLLMが一覧化しやすい形にする
-    table_md = df.to_markdown(index=False)
-
-    text = "\n".join(index_lines) + "\n\n【社員一覧】\n" + table_md
-
-    return [Document(page_content=text, metadata={"source": csv_path, "type": "employee_roster"})]
-
-

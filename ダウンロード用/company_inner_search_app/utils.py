@@ -14,8 +14,7 @@ from langchain_openai import ChatOpenAI
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 import constants as ct
-import pandas as pd
-from langchain_core.documents import Document
+
 
 ############################################################
 # 設定関連
@@ -100,16 +99,8 @@ def get_llm_response(chat_message):
     )
 
     # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのRetrieverを作成
-    # モードに応じて参照するRetrieverを切り替える（ここが最重要）
-    if st.session_state.mode == ct.ANSWER_MODE_1:
-        # 社内文書検索
-        base_retriever = st.session_state.retriever_internal
-    else:
-        # 社内問い合わせ（従業員DBを見る）
-        base_retriever = st.session_state.retriever_employees
-
     history_aware_retriever = create_history_aware_retriever(
-        llm, base_retriever, question_generator_prompt
+        llm, st.session_state.retriever, question_generator_prompt
     )
 
     # LLMから回答を取得する用のChainを作成
@@ -123,36 +114,3 @@ def get_llm_response(chat_message):
     st.session_state.chat_history.extend([HumanMessage(content=chat_message), llm_response["answer"]])
 
     return llm_response
-
-
-def load_employee_roster_as_one_doc(csv_path: str) -> list[Document]:
-    df = pd.read_csv(csv_path, encoding="utf-8")
-    df = df.fillna("")
-
-    # 列名が教材と違う可能性があるので、まずはそのまま使う
-    cols = list(df.columns)
-
-    # 検索で引っかかりやすくするための「索引」テキストを先頭に付ける
-    # （部署名が入ってる列があるなら、部署一覧を先に書く）
-    dept_col = None
-    for c in cols:
-        if "部署" in c or "部門" in c:
-            dept_col = c
-            break
-
-    index_lines = []
-    index_lines.append("【データ】社員名簿（CSV）")
-    if dept_col:
-        depts = sorted(set([d for d in df[dept_col].astype(str).tolist() if d]))
-        index_lines.append("【部署一覧】" + " / ".join(depts))
-
-    # LLMが「一覧化」しやすいように Markdown表にしておく（超効く）
-    table_md = df.to_markdown(index=False)
-
-    text = "\n".join(index_lines) + "\n\n" + "【社員一覧】\n" + table_md
-
-    doc = Document(
-        page_content=text,
-        metadata={"source": csv_path, "type": "employee_roster"}
-    )
-    return [doc]

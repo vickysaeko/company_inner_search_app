@@ -26,12 +26,14 @@ def display_select_mode():
     回答モードのラジオボタンを表示
     """
     # 回答モードを選択する用のラジオボタンを表示
-    st.sidebar.markdown("### 利用目的")
-    st.session_state.mode = st.sidebar.radio(
-        label="",
-        options=[ct.ANSWER_MODE_1, ct.ANSWER_MODE_2],
-        label_visibility="collapsed"
-    )
+    col1, col2 = st.columns([100, 1])
+    with col1:
+        # 「label_visibility="collapsed"」とすることで、ラジオボタンを非表示にする
+        st.session_state.mode = st.radio(
+            label="",
+            options=[ct.ANSWER_MODE_1, ct.ANSWER_MODE_2],
+            label_visibility="collapsed"
+        )
 
 
 def display_initial_ai_message():
@@ -40,21 +42,20 @@ def display_initial_ai_message():
     """
     with st.chat_message("assistant"):
         # 「st.success()」とすると緑枠で表示される
-        st.success("こんにちは。私は社内文書の情報をもとに回答する生成AIチャットボットです。上記で利用目的を選択し、画面下部のチャット欄からメッセージを送信してください。")
-        # 注意書き（黄色の注意枠）
-        st.warning("⚠️ 具体的に入力したほうが期待通りの回答を得やすいです。")
+        st.markdown("こんにちは。私は社内文書の情報をもとに回答する生成AIチャットボットです。上記で利用目的を選択し、画面下部のチャット欄からメッセージを送信してください。")
+
         # 「社内文書検索」の機能説明
-        st.sidebar.markdown("**【「社内文書検索」を選択した場合】**")
+        st.markdown("**【「社内文書検索」を選択した場合】**")
         # 「st.info()」を使うと青枠で表示される
-        st.sidebar.info("入力内容と関連性が高い社内文書のありかを検索できます。")
+        st.info("入力内容と関連性が高い社内文書のありかを検索できます。")
         # 「st.code()」を使うとコードブロックの装飾で表示される
         # 「wrap_lines=True」で折り返し設定、「language=None」で非装飾とする
-        st.sidebar.code("【入力例】\n社員の育成方針に関するMTGの議事録", wrap_lines=True, language=None)
+        st.code("【入力例】\n社員の育成方針に関するMTGの議事録", wrap_lines=True, language=None)
 
         # 「社内問い合わせ」の機能説明
-        st.sidebar.markdown("**【「社内問い合わせ」を選択した場合】**")
-        st.sidebar.info("質問・要望に対して、社内文書の情報をもとに回答を得られます。")
-        st.sidebar.code("【入力例】\n人事部に所属している従業員情報を一覧化して", wrap_lines=True, language=None)
+        st.markdown("**【「社内問い合わせ」を選択した場合】**")
+        st.info("質問・要望に対して、社内文書の情報をもとに回答を得られます。")
+        st.code("【入力例】\n人事部に所属している従業員情報を一覧化して", wrap_lines=True, language=None)
 
 
 def display_conversation_log():
@@ -84,17 +85,12 @@ def display_conversation_log():
                         st.markdown(message["content"]["main_message"])
 
                         # 参照元のありかに応じて、適したアイコンを取得
-                        main_path = message["content"]["main_file_path"]
-                        is_pdf = str(main_path).lower().endswith(".pdf")
                         icon = utils.get_source_icon(message['content']['main_file_path'])
                         # 参照元ドキュメントのページ番号が取得できた場合にのみ、ページ番号を表示
-                        if is_pdf and "main_page_number" in message["content"]:
-                            page = message["content"]["main_page_number"]
-                            # もし 0始まりなら次の1行をON（確認してから）
-                            # page = page + 1
-                            st.success(f"{main_path}（p.{page}）", icon=icon)
+                        if "main_page_number" in message["content"]:
+                            st.success(f"{message['content']['main_file_path']}", icon=icon)
                         else:
-                            st.success(f"{main_path}", icon=icon)
+                            st.success(f"{message['content']['main_file_path']}", icon=icon)
                         
                         # ==========================================
                         # ユーザー入力値と関連性が高いサブドキュメントのありかを表示
@@ -102,21 +98,16 @@ def display_conversation_log():
                         if "sub_message" in message["content"]:
                             # 補足メッセージの表示
                             st.markdown(message["content"]["sub_message"])
+
                             # サブドキュメントのありかを一覧表示
                             for sub_choice in message["content"]["sub_choices"]:
-                                sub_path = sub_choice["source"]
                                 # 参照元のありかに応じて、適したアイコンを取得
                                 icon = utils.get_source_icon(sub_choice['source'])
-                                
-                                sub_is_pdf = str(sub_path).lower().endswith(".pdf")
                                 # 参照元ドキュメントのページ番号が取得できた場合にのみ、ページ番号を表示
-                                if sub_is_pdf and "page_number" in sub_choice:
-                                    page = sub_choice["page_number"]
-                                    # 0始まりならON（確認してから）
-                                    # page = page + 1
-                                    st.info(f"{sub_path}（p.{page}）", icon=icon)
+                                if "page_number" in sub_choice:
+                                    st.info(f"{sub_choice['source']}", icon=icon)
                                 else:
-                                    st.info(f"{sub_path}", icon=icon)
+                                    st.info(f"{sub_choice['source']}", icon=icon)
                     # ファイルのありかの情報が取得できなかった場合、LLMからの回答のみ表示
                     else:
                         st.markdown(message["content"]["answer"])
@@ -134,28 +125,9 @@ def display_conversation_log():
                         st.markdown(f"##### {message['content']['message']}")
                         # ドキュメントのありかを一覧表示
                         for file_info in message["content"]["file_info_list"]:
-                            # 文字列の場合（旧形式）
-                            if isinstance(file_info, str):
-                                icon = utils.get_source_icon(file_info)
-                                st.info(file_info, icon=icon)
-                                continue
-
-                            # dictの場合（新形式）
-                            path = file_info.get("source", "")
-                            if not path:
-                                continue
-
-                            icon = utils.get_source_icon(path)
-                            is_pdf = str(path).lower().endswith(".pdf")
-
-                            if is_pdf and "page_number" in file_info and file_info["page_number"] is not None:
-                                page = file_info["page_number"]
-                                # 0始まりなら +1（必要ならON）
-                                # page = page + 1
-                                st.info(f"{path}（p.{page}）", icon=icon)
-                            else:
-                                st.info(path, icon=icon)
-
+                            # 参照元のありかに応じて、適したアイコンを取得
+                            icon = utils.get_source_icon(file_info)
+                            st.info(file_info, icon=icon)
 
 
 def display_search_llm_response(llm_response):
@@ -169,7 +141,7 @@ def display_search_llm_response(llm_response):
         LLMからの回答を画面表示用に整形した辞書データ
     """
     # LLMからのレスポンスに参照元情報が入っており、かつ「該当資料なし」が回答として返された場合
-    if llm_response.get("context"):
+    if llm_response["context"] and llm_response["answer"] != ct.NO_DOC_MATCH_ANSWER:
 
         # ==========================================
         # ユーザー入力値と最も関連性が高いメインドキュメントのありかを表示
@@ -186,9 +158,9 @@ def display_search_llm_response(llm_response):
         # ページ番号が取得できた場合のみ、ページ番号を表示（ドキュメントによっては取得できない場合がある）
         if "page" in llm_response["context"][0].metadata:
             # ページ番号を取得
-            main_page_number = llm_response["context"][0].metadata["page"] + 1
+            main_page_number = llm_response["context"][0].metadata["page"]
             # 「メインドキュメントのファイルパス」と「ページ番号」を表示
-            st.success(f"{main_file_path}（p.{main_page_number}）", icon=icon)
+            st.success(f"{main_file_path}", icon=icon)
         else:
             # 「メインドキュメントのファイルパス」を表示
             st.success(f"{main_file_path}", icon=icon)
@@ -198,26 +170,30 @@ def display_search_llm_response(llm_response):
         # ==========================================
         # メインドキュメント以外で、関連性が高いサブドキュメントを格納する用のリストを用意
         sub_choices = []
-        # 重複チェック用のセットを用意
-        duplicate_check_set = set()
+        # 重複チェック用のリストを用意
+        duplicate_check_list = []
 
         # ドキュメントが2件以上検索できた場合（サブドキュメントが存在する場合）のみ、サブドキュメントのありかを一覧表示
         # 「source_documents」内のリストの2番目以降をスライスで参照（2番目以降がなければfor文内の処理は実行されない）
         for document in llm_response["context"][1:]:
             # ドキュメントのファイルパスを取得
             sub_file_path = document.metadata["source"]
-            page = document.metadata.get("page")  # 無い場合はNone
-            
-            # 重複チェック用にキーを作成
-            key = (sub_file_path, page)
-            if key in duplicate_check_set:
+
+            # メインドキュメントのファイルパスと重複している場合、処理をスキップ（表示しない）
+            if sub_file_path == main_file_path:
                 continue
-            duplicate_check_set.add(key)
+            
+            # 同じファイル内の異なる箇所を参照した場合、2件目以降のファイルパスに重複が発生する可能性があるため、重複を除去
+            if sub_file_path in duplicate_check_list:
+                continue
+
+            # 重複チェック用のリストにファイルパスを順次追加
+            duplicate_check_list.append(sub_file_path)
             
             # ページ番号が取得できない場合のための分岐処理
             if "page" in document.metadata:
                 # ページ番号を取得
-                sub_page_number = document.metadata["page"] + 1
+                sub_page_number = document.metadata["page"]
                 # 「サブドキュメントのファイルパス」と「ページ番号」の辞書を作成
                 sub_choice = {"source": sub_file_path, "page_number": sub_page_number}
             else:
@@ -240,8 +216,7 @@ def display_search_llm_response(llm_response):
                 # ページ番号が取得できない場合のための分岐処理
                 if "page_number" in sub_choice:
                     # 「サブドキュメントのファイルパス」と「ページ番号」を表示
-                    page = sub_choice["page_number"]
-                    st.info(f"{sub_choice['source']}（p.{page}）", icon=icon)
+                    st.info(f"{sub_choice['source']}", icon=icon)
                 else:
                     # 「サブドキュメントのファイルパス」を表示
                     st.info(f"{sub_choice['source']}", icon=icon)
@@ -259,7 +234,6 @@ def display_search_llm_response(llm_response):
         content["main_file_path"] = main_file_path
         # メインドキュメントのページ番号は、取得できた場合にのみ追加
         if "page" in llm_response["context"][0].metadata:
-            main_page_number = llm_response["context"][0].metadata["page"] + 1
             content["main_page_number"] = main_page_number
         # サブドキュメントの情報は、取得できた場合にのみ追加
         if sub_choices:
@@ -305,34 +279,49 @@ def display_contact_llm_response(llm_response):
         message = "情報源"
         st.markdown(f"##### {message}")
 
-        # 参照元のファイル情報を格納するためのリスト
+        # 参照元のファイルパスの一覧を格納するためのリストを用意
+        file_path_list = []
         file_info_list = []
-        duplicate_check_set = set()
 
-        # LLMが回答生成の参照元として使ったドキュメント一覧をループ
+        # LLMが回答生成の参照元として使ったドキュメントの一覧が「context」内のリストの中に入っているため、ループ処理
         for document in llm_response["context"]:
-            source = document.metadata.get("source", "")
-            if not source:
+            # ファイルパスを取得
+            file_path = document.metadata["source"]
+            # ファイルパスの重複は除去
+            if file_path in file_path_list:
                 continue
 
-            # page は 0始まりのことが多いので +1（PDF以外は無いこともある）
-            page0 = document.metadata.get("page", None)
-            page_number = (page0 + 1) if isinstance(page0, int) else None
-
-            # 重複除去（source + page で判定）
-            key = (source, page_number)
-            if key in duplicate_check_set:
-                continue
-            duplicate_check_set.add(key)
-
-            # ★ここ重要：辞書形式で追加
-            info = {"source": source, "page_number": page_number}
-            file_info_list.append(info)
-
-            # 表示（UI側）
-            icon = utils.get_source_icon(source)
-            is_pdf = str(source).lower().endswith(".pdf")
-            if is_pdf and page_number is not None:
-                st.info(f"{source}（p.{page_number}）", icon=icon)
+            # ページ番号が取得できた場合のみ、ページ番号を表示（ドキュメントによっては取得できない場合がある）
+            if "page" in document.metadata:
+                # ページ番号を取得
+                page_number = document.metadata["page"]
+                # 「ファイルパス」と「ページ番号」
+                file_info = f"{file_path}"
             else:
-                st.info(source, icon=icon)
+                # 「ファイルパス」のみ
+                file_info = f"{file_path}"
+
+            # 参照元のありかに応じて、適したアイコンを取得
+            icon = utils.get_source_icon(file_path)
+            # ファイル情報を表示
+            st.info(file_info, icon=icon)
+
+            # 重複チェック用に、ファイルパスをリストに順次追加
+            file_path_list.append(file_path)
+            # ファイル情報をリストに順次追加
+            file_info_list.append(file_info)
+
+    # 表示用の会話ログに格納するためのデータを用意
+    # - 「mode」: モード（「社内文書検索」or「社内問い合わせ」）
+    # - 「answer」: LLMからの回答
+    # - 「message」: 補足メッセージ
+    # - 「file_path_list」: ファイルパスの一覧リスト
+    content = {}
+    content["mode"] = ct.ANSWER_MODE_2
+    content["answer"] = llm_response["answer"]
+    # 参照元のドキュメントが取得できた場合のみ
+    if llm_response["answer"] != ct.INQUIRY_NO_MATCH_ANSWER:
+        content["message"] = message
+        content["file_info_list"] = file_info_list
+
+    return content
