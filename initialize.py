@@ -41,6 +41,13 @@ from langchain_community.vectorstores import Chroma
 # 「.env」ファイルで定義した環境変数の読み込み
 load_dotenv()
 
+# Streamlit CloudのSecretsから環境変数を補完
+try:
+    if hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secrets:
+        os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+except Exception:
+    pass
+
 
 ############################################################
 # 関数定義
