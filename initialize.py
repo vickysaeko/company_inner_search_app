@@ -109,6 +109,11 @@ def initialize_logger():
     # ロガー（ログメッセージを実際に生成するオブジェクト）に追加してログ出力の最終設定
     logger.addHandler(log_handler)
 
+    # Streamlit Cloudなどでログが見えるように標準出力にも出す
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
 
 def initialize_session_id():
     """
